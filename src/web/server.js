@@ -256,16 +256,24 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
   }
 });
 
-// Guild info: roles for the role-picker + stats
+// Guild info: roles for the role-picker, text channels for the
+// channel-restriction picker, and stats
 app.get('/api/guilds/:guildId', requireAuth, requireGuildAdmin, async (req, res) => {
   try {
     let roles = [];
+    let channels = [];
     let memberCount = null;
     if (DEMO) {
       roles = [
         { id: '300000000000000001', name: 'Moderator', color: '#e67e22' },
         { id: '300000000000000002', name: 'VIP', color: '#9b59b6' },
         { id: '300000000000000003', name: 'Member', color: '#3498db' },
+      ];
+      channels = [
+        { id: '500000000000000001', name: 'general' },
+        { id: '500000000000000002', name: 'bot-commands' },
+        { id: '500000000000000003', name: 'memes' },
+        { id: '500000000000000004', name: 'announcements' },
       ];
       memberCount = 128;
     } else {
@@ -276,11 +284,16 @@ app.get('/api/guilds/:guildId', requireAuth, requireGuildAdmin, async (req, res)
           .filter(r => r.id !== g.id && !r.managed)
           .sort((a, b) => b.position - a.position)
           .map(r => ({ id: r.id, name: r.name.slice(0, 100), color: r.hexColor === '#000000' ? '#99aab5' : r.hexColor }));
+        // Text-based, non-thread channels where slash commands can run
+        channels = g.channels.cache
+          .filter(ch => ch.isTextBased?.() && !ch.isThread?.())
+          .sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0))
+          .map(ch => ({ id: ch.id, name: String(ch.name).slice(0, 100) }));
       }
     }
     const count = q.countCommands.get(req.params.guildId)?.n ?? 0;
     const totalUses = q.listCommands.all(req.params.guildId).reduce((s, c) => s + c.uses, 0);
-    res.json({ guild: req.guild, roles, memberCount, commandCount: count, totalUses });
+    res.json({ guild: req.guild, roles, channels, memberCount, commandCount: count, totalUses });
   } catch (err) {
     console.error('[web] guild info:', err.message);
     res.status(500).json({ error: 'Could not load server info' });

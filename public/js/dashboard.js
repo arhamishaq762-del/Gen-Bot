@@ -4,7 +4,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const state = {
-    me: null, guilds: [], inviteUrl: '#', guild: null, roles: [],
+    me: null, guilds: [], inviteUrl: '#', guild: null, roles: [], channels: [],
     commands: [], editing: null, emojis: [], emojiTarget: null,
   };
 
@@ -152,7 +152,8 @@
         api(`/api/guilds/${guildId}`),
         api(`/api/guilds/${guildId}/commands`),
       ]);
-      state.guild = info.guild; state.roles = info.roles; state.commands = cmds.commands;
+      state.guild = info.guild; state.roles = info.roles;
+      state.channels = info.channels || []; state.commands = cmds.commands;
 
       $('guildName').textContent = info.guild.name;
       guildLogo(info.guild, $('guildIcon'));
@@ -196,6 +197,14 @@
       if (c.required_role_id) {
         const role = state.roles.find(r => r.id === c.required_role_id);
         tags.appendChild(iconText('i-lock', role ? '@' + role.name : 'role', 'tag t-role'));
+      }
+      if (c.allowed_channel_ids) {
+        const ids = c.allowed_channel_ids.split(',').filter(Boolean);
+        const first = state.channels.find(ch => ch.id === ids[0]);
+        const label = ids.length === 1
+          ? '#' + (first ? first.name : 'channel')
+          : `${ids.length} channels`;
+        tags.appendChild(iconText('i-hash', label, 'tag t-chan'));
       }
       if (c.req_min_messages > 0) tags.appendChild(iconText('i-award', `${c.req_min_messages} msgs`, 'tag t-req'));
       if (c.req_status_text) tags.appendChild(iconText('i-edit', 'status', 'tag t-req'));
@@ -315,6 +324,9 @@
       sel.appendChild(o);
     }
 
+    // populate channel picker (checkbox chips)
+    renderChanPicker((cmd?.allowed_channel_ids || '').split(',').filter(Boolean));
+
     $('fName').value = cmd?.name || '';
     $('fDesc').value = cmd?.description || '';
     segType.set(cmd?.response_type || 'text');
@@ -335,6 +347,36 @@
     updatePreview();
     $('modalBackdrop').classList.remove('hidden');
     $('fName').focus();
+  }
+
+  // ---------- channel restriction picker ----------
+  function renderChanPicker(selectedIds = []) {
+    const box = $('chanPicker');
+    box.textContent = '';
+    if (!state.channels.length) {
+      box.appendChild(el('div', 'chan-empty', 'No text channels found (the bot may still be loading).'));
+      return;
+    }
+    const selected = new Set(selectedIds);
+    for (const ch of state.channels) {
+      const label = el('label', 'chan-chip' + (selected.has(ch.id) ? ' on' : ''));
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.value = ch.id;
+      cb.checked = selected.has(ch.id);
+      cb.addEventListener('change', () => {
+        label.classList.toggle('on', cb.checked);
+        updatePreview();
+      });
+      label.appendChild(cb);
+      label.appendChild(svgIcon('i-hash', 'ic ic-xs'));
+      label.appendChild(document.createTextNode(ch.name));
+      box.appendChild(label);
+    }
+  }
+
+  function getSelectedChannels() {
+    return [...document.querySelectorAll('#chanPicker input:checked')].map(cb => cb.value);
   }
 
   function closeModal() {
@@ -399,6 +441,14 @@
     if (delivery === 'dm') flags.appendChild(iconText('i-mail', 'Sent via direct message', 'pv-flag'));
     const role = $('fRole');
     if (role.value) flags.appendChild(iconText('i-lock', `Requires ${role.options[role.selectedIndex].text}`, 'pv-flag'));
+    const chans = getSelectedChannels();
+    if (chans.length) {
+      const names = chans.slice(0, 3)
+        .map(id => '#' + (state.channels.find(ch => ch.id === id)?.name || 'channel'))
+        .join(' ');
+      const more = chans.length > 3 ? ` +${chans.length - 3} more` : '';
+      flags.appendChild(iconText('i-hash', `Only works in ${names}${more}`, 'pv-flag'));
+    }
     const minMsg = parseInt($('fMinMsg').value, 10) || 0;
     if (minMsg > 0) flags.appendChild(iconText('i-award', `Requires ${minMsg} messages`, 'pv-flag'));
     if ($('fStatus').value.trim()) flags.appendChild(iconText('i-edit', 'Requires status text', 'pv-flag'));
@@ -495,6 +545,7 @@
       embed_footer: $('fEFooter').value,
       delivery: segDelivery.get(),
       required_role_id: $('fRole').value,
+      allowed_channel_ids: getSelectedChannels(),
       cooldown_seconds: parseInt($('fCooldown').value, 10) || 0,
       req_min_messages: parseInt($('fMinMsg').value, 10) || 0,
       req_status_text: $('fStatus').value.trim(),

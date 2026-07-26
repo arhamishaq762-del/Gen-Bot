@@ -81,6 +81,20 @@ async function handleCustomCommand(interaction) {
 
   const member = interaction.member;
 
+  // --- Channel restriction: command only works in selected channels ---
+  if (c.allowed_channel_ids) {
+    const allowed = c.allowed_channel_ids.split(',').filter(Boolean);
+    if (allowed.length && !allowed.includes(interaction.channelId)) {
+      const mentions = allowed.slice(0, 5).map(id => `<#${id}>`).join(' ');
+      const more = allowed.length > 5 ? ` (+${allowed.length - 5} more)` : '';
+      await interaction.reply({
+        content: `\`/${c.name}\` only works in: ${mentions}${more}`,
+        flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] },
+      });
+      return true;
+    }
+  }
+
   // --- Permission check: required role [§4 permission checks] ---
   if (c.required_role_id) {
     const hasRole = member?.roles?.cache?.has?.(c.required_role_id)

@@ -15,6 +15,8 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const db = new Database(path.join(dataDir, 'bot.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// Disk-space safety: cap the WAL journal at 4 MB so it never balloons
+db.pragma('journal_size_limit = 4194304');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS commands (
@@ -34,6 +36,8 @@ CREATE TABLE IF NOT EXISTS commands (
   delivery TEXT NOT NULL DEFAULT 'channel' CHECK (delivery IN ('channel','ephemeral','dm')),
   -- role restriction (empty = everyone)
   required_role_id TEXT DEFAULT '',
+  -- channel restriction: comma-separated channel IDs (empty = works everywhere)
+  allowed_channel_ids TEXT NOT NULL DEFAULT '',
   -- unlock requirements
   req_min_messages INTEGER NOT NULL DEFAULT 0 CHECK (req_min_messages >= 0 AND req_min_messages <= 1000000),
   req_status_text TEXT DEFAULT '',
@@ -73,6 +77,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_guild ON audit_log (guild_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_cmd_guild ON commands (guild_id);
 `);
+
+// ---------- lightweight migrations for existing databases ----------
+// CREATE TABLE IF NOT EXISTS doesn't add new columns to old DBs, so we
+// check the actual schema and ALTER when a column is missing.
+{
+  const cols = db.prepare('PRAGMA table_info(commands)').all().map(c => c.name);
+  if (!cols.includes('allowed_channel_ids')) {
+    db.exec("ALTER TABLE commands ADD COLUMN allowed_channel_ids TEXT NOT NULL DEFAULT ''");
+    console.log('[db] migrated: added commands.allowed_channel_ids');
+  }
+}
 
 // ---------- validation helpers [Security Pack §1: backend validation] ----------
 const COMMAND_NAME_RE = /^[a-z0-9_-]{1,32}$/;
@@ -121,6 +136,18 @@ export function validateCommandInput(body, { partial = false } = {}) {
   if (role && !SNOWFLAKE_RE.test(role)) errors.push('Invalid role ID');
   else out.required_role_id = role;
 
+  // Channel restriction: accepts an array of IDs or a comma-separated string.
+  // Every entry must be a snowflake; empty list = command works in all channels.
+  {
+    const raw = Array.isArray(body.allowed_channel_ids)
+      ? body.allowed_channel_ids
+      : str(body.allowed_channel_ids).split(',');
+    const ids = [...new Set(raw.map(v => String(v).trim()).filter(Boolean))];
+    if (ids.length > 50) errors.push('You can restrict a command to at most 50 channels');
+    else if (ids.some(id => !SNOWFLAKE_RE.test(id))) errors.push('Invalid channel ID in channel restriction');
+    else out.allowed_channel_ids = ids.join(',');
+  }
+
   const minMsg = Number(body.req_min_messages ?? 0);
   if (!Number.isInteger(minMsg) || minMsg < 0 || minMsg > 1000000) errors.push('Message requirement must be an integer 0-1,000,000');
   else out.req_min_messages = minMsg;
@@ -156,16 +183,16 @@ export const q = {
   insertCommand: db.prepare(`
     INSERT INTO commands (guild_id, name, description, response_type, response_text,
       embed_title, embed_description, embed_color, embed_image, embed_footer,
-      delivery, required_role_id, req_min_messages, req_status_text, cooldown_seconds, enabled, created_by)
+      delivery, required_role_id, allowed_channel_ids, req_min_messages, req_status_text, cooldown_seconds, enabled, created_by)
     VALUES (@guild_id, @name, @description, @response_type, @response_text,
       @embed_title, @embed_description, @embed_color, @embed_image, @embed_footer,
-      @delivery, @required_role_id, @req_min_messages, @req_status_text, @cooldown_seconds, @enabled, @created_by)
+      @delivery, @required_role_id, @allowed_channel_ids, @req_min_messages, @req_status_text, @cooldown_seconds, @enabled, @created_by)
   `),
   updateCommand: db.prepare(`
     UPDATE commands SET name=@name, description=@description, response_type=@response_type,
       response_text=@response_text, embed_title=@embed_title, embed_description=@embed_description,
       embed_color=@embed_color, embed_image=@embed_image, embed_footer=@embed_footer,
-      delivery=@delivery, required_role_id=@required_role_id, req_min_messages=@req_min_messages,
+      delivery=@delivery, required_role_id=@required_role_id, allowed_channel_ids=@allowed_channel_ids, req_min_messages=@req_min_messages,
       req_status_text=@req_status_text, cooldown_seconds=@cooldown_seconds, enabled=@enabled,
       updated_at=datetime('now')
     WHERE id=@id AND guild_id=@guild_id
@@ -192,6 +219,14 @@ export const q = {
     VALUES (?, ?, ?, ?, ?)
   `),
   listAudit: db.prepare('SELECT * FROM audit_log WHERE guild_id = ? ORDER BY id DESC LIMIT 50'),
+  // Disk-space safety: keep only the newest 200 audit entries per guild
+  pruneAudit: db.prepare(`
+    DELETE FROM audit_log WHERE guild_id = ? AND id <= (
+      SELECT id FROM audit_log WHERE guild_id = ? ORDER BY id DESC LIMIT 1 OFFSET 200
+    )
+  `),
+  // Disk-space safety: drop cooldown rows older than the max cooldown (24h)
+  pruneCooldowns: db.prepare('DELETE FROM cooldowns WHERE last_used < ?'),
 };
 
 // ---------- admin panel aggregate queries (read-only) ----------
@@ -212,9 +247,21 @@ export const qAdmin = {
 export function audit(guildId, actorId, actorTag, action, detail = '') {
   try {
     q.addAudit.run(String(guildId), String(actorId), String(actorTag).slice(0, 64), action, String(detail).slice(0, 300));
+    q.pruneAudit.run(String(guildId), String(guildId)); // keep table small (1GB disk friendly)
   } catch (e) {
     console.error('[audit] failed:', e.message);
   }
 }
+
+// Periodic cleanup: expired cooldowns (runs at boot + every 6h).
+// Keeps the DB tiny on hosts with small disks.
+function cleanup() {
+  try {
+    q.pruneCooldowns.run(Math.floor(Date.now() / 1000) - 86400);
+    db.pragma('wal_checkpoint(TRUNCATE)'); // shrink the WAL file back down
+  } catch { /* non-fatal */ }
+}
+cleanup();
+setInterval(cleanup, 6 * 60 * 60 * 1000).unref();
 
 export default db;
