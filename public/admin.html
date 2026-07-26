@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel — CmdForge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="dash">
+<div class="bg-glow"></div>
+<nav class="nav">
+  <div class="brand" id="brandHome" role="button" tabindex="0"><svg class="ic brand-ic"><use href="/icons.svg#i-bolt"/></svg> CmdForge <span class="admin-tag"><svg class="ic ic-xs"><use href="/icons.svg#i-crown"/></svg> ADMIN</span></div>
+  <div class="nav-right">
+    <a class="btn btn-ghost" href="/dashboard"><svg class="ic"><use href="/icons.svg#i-arrow-left"/></svg> Dashboard</a>
+    <div class="user-chip" id="userChip"></div>
+    <button class="btn btn-ghost" id="logoutBtn"><svg class="ic"><use href="/icons.svg#i-logout"/></svg> Logout</button>
+  </div>
+</nav>
+
+<main class="dash-main">
+  <h1 class="page-title">Admin Panel</h1>
+  <p class="page-sub">Bot-owner overview across <strong>every server</strong> the bot is in. Only user IDs listed in <code>ADMIN_USER_IDS</code> can see this page.</p>
+
+  <div class="stat-cards" id="statCards"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="servers"><svg class="ic"><use href="/icons.svg#i-server"/></svg> Servers</button>
+    <button class="tab" data-tab="top"><svg class="ic"><use href="/icons.svg#i-chart"/></svg> Top Commands</button>
+    <button class="tab" data-tab="activity"><svg class="ic"><use href="/icons.svg#i-activity"/></svg> Recent Activity</button>
+  </div>
+
+  <div id="tabServers"><div class="admin-table" id="serverTable"></div></div>
+  <div id="tabTop" class="hidden"><div class="admin-table" id="topTable"></div></div>
+  <div id="tabActivity" class="hidden"><div class="audit-list" id="activityList"></div></div>
+
+  <div class="loader" id="loader"><div class="spinner"></div></div>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/js/admin.js"></script>
+</body>
+</html>
