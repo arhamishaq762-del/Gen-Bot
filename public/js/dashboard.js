@@ -3,7 +3,10 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const state = { me: null, guilds: [], inviteUrl: '#', guild: null, roles: [], commands: [], editing: null };
+  const state = {
+    me: null, guilds: [], inviteUrl: '#', guild: null, roles: [],
+    commands: [], editing: null, emojis: [], emojiTarget: null,
+  };
 
   // ---------- helpers ----------
   const el = (tag, cls, text) => {
@@ -11,6 +14,20 @@
     if (cls) n.className = cls;
     if (text !== undefined) n.textContent = text;
     return n;
+  };
+  const svgIcon = (name, cls = 'ic') => {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('class', cls);
+    const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    u.setAttribute('href', `/icons.svg#${name}`);
+    s.appendChild(u);
+    return s;
+  };
+  const iconText = (name, text, cls) => {
+    const span = el('span', cls);
+    span.appendChild(svgIcon(name, 'ic ic-xs'));
+    span.appendChild(document.createTextNode(' ' + text));
+    return span;
   };
 
   async function api(path, opts = {}) {
@@ -42,6 +59,19 @@
     if (id) $(id).classList.remove('hidden');
   }
 
+  // Server logo: real icon if the server has one, otherwise the Discord logo mark
+  function guildLogo(g, container) {
+    container.textContent = '';
+    if (g.icon) {
+      const img = el('img');
+      img.src = `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`;
+      img.alt = '';
+      container.appendChild(img);
+    } else {
+      container.appendChild(svgIcon('i-discord', 'ic logo-fallback'));
+    }
+  }
+
   // ---------- boot ----------
   async function boot() {
     try {
@@ -49,6 +79,8 @@
     } catch { return; }
     renderUser();
     if (state.me.demo) $('demoPill').classList.remove('hidden');
+    api('/api/admin/is-admin').then(r => { if (r.admin) $('adminLink').classList.remove('hidden'); }).catch(() => {});
+    api('/api/emojis').then(r => { state.emojis = r.emojis || []; }).catch(() => {});
     await loadServers();
   }
 
@@ -81,7 +113,7 @@
     grid.textContent = '';
     if (!state.guilds.length) {
       const empty = el('div', 'empty-state');
-      empty.appendChild(el('div', 'big', '🤷'));
+      empty.appendChild(svgIcon('i-server', 'ic ic-big'));
       empty.appendChild(el('p', null, 'No servers found where you have Administrator or Manage Server permission.'));
       grid.appendChild(empty);
       return;
@@ -89,15 +121,15 @@
     for (const g of state.guilds) {
       const card = el('div', 'server-card' + (g.botIn ? '' : ' no-bot'));
       const icon = el('div', 'guild-icon');
-      if (g.icon) {
-        const img = el('img'); img.src = `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=96`; img.alt = '';
-        icon.appendChild(img);
-      } else icon.textContent = initials(g.name);
+      guildLogo(g, icon);
       card.appendChild(icon);
 
       const info = el('div');
       info.appendChild(el('h3', null, g.name));
-      info.appendChild(el('span', 'badge ' + (g.botIn ? 'badge-ok' : 'badge-invite'), g.botIn ? '✓ Bot active' : 'Bot not added'));
+      const badge = el('span', 'badge ' + (g.botIn ? 'badge-ok' : 'badge-invite'));
+      badge.appendChild(svgIcon(g.botIn ? 'i-check' : 'i-plus', 'ic ic-xs'));
+      badge.appendChild(document.createTextNode(g.botIn ? ' Bot active' : ' Bot not added'));
+      info.appendChild(badge);
       card.appendChild(info);
 
       if (g.botIn) {
@@ -112,8 +144,6 @@
     }
   }
 
-  const initials = (name) => name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-
   // ---------- guild view ----------
   async function openGuild(guildId) {
     showView(null); showLoader(true);
@@ -125,12 +155,7 @@
       state.guild = info.guild; state.roles = info.roles; state.commands = cmds.commands;
 
       $('guildName').textContent = info.guild.name;
-      const gi = $('guildIcon');
-      gi.textContent = '';
-      if (info.guild.icon) {
-        const img = el('img'); img.src = `https://cdn.discordapp.com/icons/${info.guild.id}/${info.guild.icon}.png?size=128`; img.alt = '';
-        gi.appendChild(img);
-      } else gi.textContent = initials(info.guild.name);
+      guildLogo(info.guild, $('guildIcon'));
 
       const stats = $('guildStats');
       stats.textContent = '';
@@ -154,8 +179,8 @@
     list.textContent = '';
     if (!state.commands.length) {
       const empty = el('div', 'empty-state');
-      empty.appendChild(el('div', 'big', '⌨️'));
-      empty.appendChild(el('p', null, 'No custom commands yet. Hit "+ New Command" to make your first one!'));
+      empty.appendChild(svgIcon('i-terminal', 'ic ic-big'));
+      empty.appendChild(el('p', null, 'No custom commands yet. Hit "New Command" to make your first one!'));
       list.appendChild(empty);
       return;
     }
@@ -165,24 +190,28 @@
       card.appendChild(el('span', 'cmd-desc', c.description));
 
       const tags = el('div', 'cmd-tags');
-      tags.appendChild(el('span', 'tag', c.response_type === 'embed' ? '🖼️ embed' : '💬 text'));
-      const dLabel = { channel: '📢 public', ephemeral: '👁️ hidden', dm: '📬 DM' }[c.delivery];
-      tags.appendChild(el('span', 'tag t-dm', dLabel));
+      tags.appendChild(iconText(c.response_type === 'embed' ? 'i-image' : 'i-chat', c.response_type, 'tag'));
+      const dInfo = { channel: ['i-broadcast', 'public'], ephemeral: ['i-eye', 'hidden'], dm: ['i-mail', 'DM'] }[c.delivery];
+      tags.appendChild(iconText(dInfo[0], dInfo[1], 'tag t-dm'));
       if (c.required_role_id) {
         const role = state.roles.find(r => r.id === c.required_role_id);
-        tags.appendChild(el('span', 'tag t-role', '🔐 ' + (role ? '@' + role.name : 'role')));
+        tags.appendChild(iconText('i-lock', role ? '@' + role.name : 'role', 'tag t-role'));
       }
-      if (c.req_min_messages > 0) tags.appendChild(el('span', 'tag t-req', `🏆 ${c.req_min_messages} msgs`));
-      if (c.req_status_text) tags.appendChild(el('span', 'tag t-req', '✏️ status'));
-      if (c.cooldown_seconds > 0) tags.appendChild(el('span', 'tag t-cd', `⏳ ${fmtCd(c.cooldown_seconds)}`));
+      if (c.req_min_messages > 0) tags.appendChild(iconText('i-award', `${c.req_min_messages} msgs`, 'tag t-req'));
+      if (c.req_status_text) tags.appendChild(iconText('i-edit', 'status', 'tag t-req'));
+      if (c.cooldown_seconds > 0) tags.appendChild(iconText('i-clock', fmtCd(c.cooldown_seconds), 'tag t-cd'));
       tags.appendChild(el('span', 'tag', `${c.uses} uses`));
       if (!c.enabled) tags.appendChild(el('span', 'tag', 'disabled'));
       card.appendChild(tags);
 
       const actions = el('div', 'cmd-actions');
-      const editBtn = el('button', 'btn btn-sm', '✏️ Edit');
+      const editBtn = el('button', 'btn btn-sm');
+      editBtn.appendChild(svgIcon('i-edit', 'ic ic-xs'));
+      editBtn.appendChild(document.createTextNode(' Edit'));
       editBtn.addEventListener('click', () => openModal(c));
-      const delBtn = el('button', 'btn btn-sm btn-danger', '🗑️');
+      const delBtn = el('button', 'btn btn-sm btn-danger');
+      delBtn.appendChild(svgIcon('i-trash', 'ic ic-xs'));
+      delBtn.title = 'Delete';
       delBtn.addEventListener('click', () => deleteCommand(c));
       actions.appendChild(editBtn); actions.appendChild(delBtn);
       card.appendChild(actions);
@@ -261,6 +290,7 @@
       b.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('on'));
       b.classList.add('on');
       if (b.parentElement.id === 'segType') updateTypeRows();
+      updatePreview();
     });
   });
 
@@ -302,12 +332,155 @@
     $('fEnabled').checked = cmd ? Boolean(cmd.enabled) : true;
 
     updateTypeRows();
+    updatePreview();
     $('modalBackdrop').classList.remove('hidden');
     $('fName').focus();
   }
 
-  function closeModal() { $('modalBackdrop').classList.add('hidden'); state.editing = null; }
+  function closeModal() {
+    $('modalBackdrop').classList.add('hidden');
+    hideEmojiPop();
+    state.editing = null;
+  }
 
+  // ---------- live preview ----------
+  // Renders <:name:id> custom emoji codes as real images from Discord's CDN,
+  // substitutes placeholders, and mirrors delivery/requirement settings.
+  function renderRich(target, text) {
+    target.textContent = '';
+    if (!text) return;
+    const filled = text
+      .replaceAll('{user}', `@${state.me?.global_name || state.me?.username || 'user'}`)
+      .replaceAll('{username}', state.me?.username || 'user')
+      .replaceAll('{server}', state.guild?.name || 'this server');
+    const re = /<(a?):([a-zA-Z0-9_]{1,64}):(\d{5,25})>/g;
+    let last = 0, m;
+    while ((m = re.exec(filled)) !== null) {
+      if (m.index > last) target.appendChild(document.createTextNode(filled.slice(last, m.index)));
+      const img = el('img', 'pv-emoji');
+      img.src = `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] === 'a' ? 'gif' : 'png'}?size=32`;
+      img.alt = `:${m[2]}:`;
+      img.title = `:${m[2]}:`;
+      target.appendChild(img);
+      last = m.index + m[0].length;
+    }
+    if (last < filled.length) target.appendChild(document.createTextNode(filled.slice(last)));
+  }
+
+  function updatePreview() {
+    const isEmbed = segType.get() === 'embed';
+    const name = $('fName').value.trim() || 'command';
+    $('pvCmdName').textContent = '/' + name;
+    $('pvUser').textContent = state.me?.username || 'username';
+    $('pvTime').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    renderRich($('pvContent'), $('fText').value);
+
+    const embedBox = $('pvEmbed');
+    if (isEmbed) {
+      embedBox.classList.remove('hidden');
+      $('pvEmbedBar').style.background = $('fEColor').value;
+      renderRich($('pvEmbedTitle'), $('fETitle').value);
+      renderRich($('pvEmbedDesc'), $('fEDesc').value);
+      const imgUrl = $('fEImg').value.trim();
+      const img = $('pvEmbedImg');
+      if (/^https:\/\/[^\s]+$/i.test(imgUrl)) { img.src = imgUrl; img.classList.remove('hidden'); }
+      else img.classList.add('hidden');
+      $('pvEmbedFooter').textContent = $('fEFooter').value;
+    } else {
+      embedBox.classList.add('hidden');
+    }
+
+    // flags row: delivery + requirements + cooldown
+    const flags = $('pvFlags');
+    flags.textContent = '';
+    const delivery = segDelivery.get();
+    if (delivery === 'ephemeral') flags.appendChild(iconText('i-eye', 'Only the user can see this', 'pv-flag'));
+    if (delivery === 'dm') flags.appendChild(iconText('i-mail', 'Sent via direct message', 'pv-flag'));
+    const role = $('fRole');
+    if (role.value) flags.appendChild(iconText('i-lock', `Requires ${role.options[role.selectedIndex].text}`, 'pv-flag'));
+    const minMsg = parseInt($('fMinMsg').value, 10) || 0;
+    if (minMsg > 0) flags.appendChild(iconText('i-award', `Requires ${minMsg} messages`, 'pv-flag'));
+    if ($('fStatus').value.trim()) flags.appendChild(iconText('i-edit', 'Requires status text', 'pv-flag'));
+    const cd = parseInt($('fCooldown').value, 10) || 0;
+    if (cd > 0) flags.appendChild(iconText('i-clock', `${fmtCd(cd)} cooldown`, 'pv-flag'));
+  }
+
+  // live update on every input in the form
+  ['fName', 'fText', 'fETitle', 'fEDesc', 'fEColor', 'fEImg', 'fEFooter', 'fCooldown', 'fMinMsg', 'fStatus']
+    .forEach(id => $(id).addEventListener('input', updatePreview));
+  $('fRole').addEventListener('change', updatePreview);
+
+  // ---------- custom emoji picker ----------
+  function hideEmojiPop() { $('emojiPop').classList.add('hidden'); state.emojiTarget = null; }
+
+  function renderEmojiGrid(filter = '') {
+    const grid = $('emojiGrid');
+    grid.textContent = '';
+    const f = filter.toLowerCase();
+    const items = state.emojis.filter(e => !f || e.name.toLowerCase().includes(f) || e.guild.toLowerCase().includes(f));
+    if (!items.length) {
+      grid.appendChild(el('div', 'emoji-empty', state.emojis.length ? 'No emojis match.' : 'No custom emojis found on the bot\'s servers.'));
+      return;
+    }
+    // group by server
+    const byGuild = new Map();
+    for (const e of items) {
+      if (!byGuild.has(e.guild)) byGuild.set(e.guild, []);
+      byGuild.get(e.guild).push(e);
+    }
+    for (const [gName, list] of byGuild) {
+      grid.appendChild(el('div', 'emoji-group', gName));
+      const row = el('div', 'emoji-row');
+      for (const e of list) {
+        const btn = el('button', 'emoji-item');
+        btn.type = 'button';
+        btn.title = `:${e.name}: (${e.guild})`;
+        const img = el('img');
+        img.src = `https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? 'gif' : 'png'}?size=32`;
+        img.alt = `:${e.name}:`;
+        img.loading = 'lazy';
+        btn.appendChild(img);
+        btn.addEventListener('click', () => insertEmoji(e));
+        row.appendChild(btn);
+      }
+      grid.appendChild(row);
+    }
+  }
+
+  function insertEmoji(e) {
+    const ta = state.emojiTarget;
+    if (!ta) return;
+    const code = `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`;
+    const start = ta.selectionStart ?? ta.value.length;
+    ta.value = ta.value.slice(0, start) + code + ta.value.slice(ta.selectionEnd ?? start);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + code.length;
+    updatePreview();
+  }
+
+  document.querySelectorAll('.emoji-btn').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const pop = $('emojiPop');
+      const target = $(btn.dataset.target);
+      if (!pop.classList.contains('hidden') && state.emojiTarget === target) { hideEmojiPop(); return; }
+      state.emojiTarget = target;
+      $('emojiSearch').value = '';
+      renderEmojiGrid();
+      pop.classList.remove('hidden');
+      const r = btn.getBoundingClientRect();
+      const popW = 320;
+      pop.style.left = Math.max(8, Math.min(window.innerWidth - popW - 8, r.right - popW)) + 'px';
+      pop.style.top = (r.bottom + 6) + 'px';
+      $('emojiSearch').focus();
+    });
+  });
+  $('emojiSearch').addEventListener('input', (e) => renderEmojiGrid(e.target.value));
+  $('emojiPop').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', hideEmojiPop);
+
+  // ---------- save ----------
   $('cmdForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = {
@@ -339,7 +512,7 @@
         saved = await api(`/api/guilds/${state.guild.id}/commands`, { method: 'POST', body });
         state.commands.push(saved.command);
         state.commands.sort((a, b) => a.name.localeCompare(b.name));
-        toast(`Created /${saved.command.name} 🎉`);
+        toast(`Created /${saved.command.name}`);
       }
       renderCommands();
       closeModal();
@@ -362,7 +535,12 @@
   $('modalClose').addEventListener('click', closeModal);
   $('cancelBtn').addEventListener('click', closeModal);
   $('modalBackdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!$('emojiPop').classList.contains('hidden')) hideEmojiPop();
+      else closeModal();
+    }
+  });
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
   boot();

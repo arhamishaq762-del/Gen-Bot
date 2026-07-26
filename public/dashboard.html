@@ -11,12 +11,14 @@
 </head>
 <body class="dash">
 <div class="bg-glow"></div>
+<div id="iconSprite"></div>
 <nav class="nav">
-  <div class="brand" id="brandHome" role="button" tabindex="0"><span class="brand-icon">⚡</span> CmdForge</div>
+  <div class="brand" id="brandHome" role="button" tabindex="0"><svg class="ic brand-ic"><use href="/icons.svg#i-bolt"/></svg> CmdForge</div>
   <div class="nav-right">
     <span class="demo-pill hidden" id="demoPill">DEMO MODE</span>
+    <a class="btn btn-ghost hidden" id="adminLink" href="/admin"><svg class="ic"><use href="/icons.svg#i-crown"/></svg> Admin</a>
     <div class="user-chip" id="userChip"></div>
-    <button class="btn btn-ghost" id="logoutBtn">Logout</button>
+    <button class="btn btn-ghost" id="logoutBtn"><svg class="ic"><use href="/icons.svg#i-logout"/></svg> Logout</button>
   </div>
 </nav>
 
@@ -30,20 +32,20 @@
 
   <!-- Guild manage view -->
   <section id="viewGuild" class="hidden">
-    <button class="btn btn-ghost back-btn" id="backBtn">← All servers</button>
+    <button class="btn btn-ghost back-btn" id="backBtn"><svg class="ic"><use href="/icons.svg#i-arrow-left"/></svg> All servers</button>
     <div class="guild-head">
       <div class="guild-icon-lg" id="guildIcon"></div>
       <div>
         <h1 class="page-title" id="guildName"></h1>
         <div class="stats-row" id="guildStats"></div>
       </div>
-      <button class="btn btn-primary" id="newCmdBtn">+ New Command</button>
+      <button class="btn btn-primary" id="newCmdBtn"><svg class="ic"><use href="/icons.svg#i-plus"/></svg> New Command</button>
     </div>
 
     <div class="tabs">
-      <button class="tab active" data-tab="commands">⌨️ Commands</button>
-      <button class="tab" data-tab="audit">📋 Audit Log</button>
-      <button class="tab" data-tab="leaderboard">🏆 Message Leaderboard</button>
+      <button class="tab active" data-tab="commands"><svg class="ic"><use href="/icons.svg#i-terminal"/></svg> Commands</button>
+      <button class="tab" data-tab="audit"><svg class="ic"><use href="/icons.svg#i-clipboard"/></svg> Audit Log</button>
+      <button class="tab" data-tab="leaderboard"><svg class="ic"><use href="/icons.svg#i-award"/></svg> Message Leaderboard</button>
     </div>
 
     <div id="tabCommands"><div class="cmd-list" id="cmdList"></div></div>
@@ -56,11 +58,12 @@
 
 <!-- Command editor modal -->
 <div class="modal-backdrop hidden" id="modalBackdrop">
-  <div class="modal" role="dialog" aria-modal="true">
+  <div class="modal modal-wide" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h2 id="modalTitle">New Command</h2>
-      <button class="modal-close" id="modalClose">✕</button>
+      <button class="modal-close" id="modalClose" aria-label="Close"><svg class="ic"><use href="/icons.svg#i-x"/></svg></button>
     </div>
+    <div class="modal-cols">
     <form id="cmdForm" class="modal-body">
       <div class="form-grid">
         <label class="field">
@@ -77,14 +80,17 @@
       <div class="seg-row">
         <span class="seg-label">Response type</span>
         <div class="seg" id="segType">
-          <button type="button" data-v="text" class="on">💬 Text</button>
-          <button type="button" data-v="embed">🖼️ Embed</button>
+          <button type="button" data-v="text" class="on"><svg class="ic"><use href="/icons.svg#i-chat"/></svg> Text</button>
+          <button type="button" data-v="embed"><svg class="ic"><use href="/icons.svg#i-image"/></svg> Embed</button>
         </div>
       </div>
 
       <label class="field" id="rowText">
         <span>Response message</span>
-        <textarea id="fText" maxlength="2000" rows="3" placeholder="Hey {user}, welcome to {server}!"></textarea>
+        <div class="input-wrap">
+          <textarea id="fText" maxlength="2000" rows="3" placeholder="Hey {user}, welcome to {server}!"></textarea>
+          <button type="button" class="emoji-btn" data-target="fText" title="Insert custom emoji"><svg class="ic"><use href="/icons.svg#i-smile"/></svg></button>
+        </div>
         <small>Placeholders: <code>{user}</code> mention · <code>{username}</code> · <code>{server}</code></small>
       </label>
 
@@ -93,7 +99,12 @@
           <label class="field"><span>Embed title</span><input type="text" id="fETitle" maxlength="256" placeholder="Announcement"></label>
           <label class="field"><span>Embed color</span><input type="color" id="fEColor" value="#5865F2"></label>
         </div>
-        <label class="field"><span>Embed description</span><textarea id="fEDesc" maxlength="4000" rows="3" placeholder="Rich text here… supports {user} and {server}"></textarea></label>
+        <label class="field"><span>Embed description</span>
+          <div class="input-wrap">
+            <textarea id="fEDesc" maxlength="4000" rows="3" placeholder="Rich text here… supports {user} and {server}"></textarea>
+            <button type="button" class="emoji-btn" data-target="fEDesc" title="Insert custom emoji"><svg class="ic"><use href="/icons.svg#i-smile"/></svg></button>
+          </div>
+        </label>
         <div class="form-grid">
           <label class="field"><span>Image URL (https)</span><input type="url" id="fEImg" maxlength="500" placeholder="https://…"></label>
           <label class="field"><span>Footer</span><input type="text" id="fEFooter" maxlength="2048" placeholder="Powered by CmdForge"></label>
@@ -103,9 +114,9 @@
       <div class="seg-row">
         <span class="seg-label">Send it…</span>
         <div class="seg" id="segDelivery">
-          <button type="button" data-v="channel" class="on">📢 In chat (everyone)</button>
-          <button type="button" data-v="ephemeral">👁️ In chat (only them)</button>
-          <button type="button" data-v="dm">📬 To their DMs</button>
+          <button type="button" data-v="channel" class="on"><svg class="ic"><use href="/icons.svg#i-broadcast"/></svg> In chat (everyone)</button>
+          <button type="button" data-v="ephemeral"><svg class="ic"><use href="/icons.svg#i-eye"/></svg> In chat (only them)</button>
+          <button type="button" data-v="dm"><svg class="ic"><use href="/icons.svg#i-mail"/></svg> To their DMs</button>
         </div>
       </div>
 
@@ -121,7 +132,7 @@
       </div>
 
       <fieldset class="req-box">
-        <legend>🏆 Unlock requirements <small>(optional — users must meet these to run the command)</small></legend>
+        <legend><svg class="ic"><use href="/icons.svg#i-award"/></svg> Unlock requirements <small>(optional)</small></legend>
         <div class="form-grid">
           <label class="field">
             <span>Minimum messages sent</span>
@@ -144,7 +155,44 @@
         <button type="submit" class="btn btn-primary" id="saveBtn">Save Command</button>
       </div>
     </form>
+
+    <!-- Live preview -->
+    <aside class="preview-pane">
+      <div class="preview-label"><svg class="ic"><use href="/icons.svg#i-eye"/></svg> Live preview</div>
+      <div class="discord-mock">
+        <div class="dm-invoke">
+          <span class="dm-avatar dm-avatar-user"></span>
+          <span class="dm-invoke-text"><b id="pvUser">username</b> used <span class="dm-cmd" id="pvCmdName">/command</span></span>
+        </div>
+        <div class="dm-msg">
+          <span class="dm-avatar dm-avatar-bot"><svg class="ic"><use href="/icons.svg#i-bolt"/></svg></span>
+          <div class="dm-body">
+            <div class="dm-author">CmdForge <span class="dm-bot-tag"><svg class="ic ic-xs"><use href="/icons.svg#i-check"/></svg> APP</span> <span class="dm-time" id="pvTime"></span></div>
+            <div class="dm-content" id="pvContent"></div>
+            <div class="dm-embed hidden" id="pvEmbed">
+              <div class="dm-embed-bar" id="pvEmbedBar"></div>
+              <div class="dm-embed-inner">
+                <div class="dm-embed-title" id="pvEmbedTitle"></div>
+                <div class="dm-embed-desc" id="pvEmbedDesc"></div>
+                <img class="dm-embed-img hidden" id="pvEmbedImg" alt="">
+                <div class="dm-embed-footer" id="pvEmbedFooter"></div>
+              </div>
+            </div>
+            <div class="dm-flags" id="pvFlags"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    </div>
   </div>
+</div>
+
+<!-- Emoji picker popover -->
+<div class="emoji-pop hidden" id="emojiPop">
+  <div class="emoji-pop-head">
+    <input type="text" id="emojiSearch" placeholder="Search emojis from all bot servers…">
+  </div>
+  <div class="emoji-grid" id="emojiGrid"></div>
 </div>
 
 <div class="toast hidden" id="toast"></div>

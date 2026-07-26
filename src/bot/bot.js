@@ -87,7 +87,7 @@ async function handleCustomCommand(interaction) {
       ?? member?.roles?.includes?.(c.required_role_id);
     if (!hasRole) {
       await interaction.reply({
-        content: `🔒 You need the <@&${c.required_role_id}> role to use this command.`,
+        content: `You need the <@&${c.required_role_id}> role to use this command.`,
         flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] },
       });
       return true;
@@ -100,7 +100,7 @@ async function handleCustomCommand(interaction) {
     const count = row?.count ?? 0;
     if (count < c.req_min_messages) {
       await interaction.reply({
-        content: `📊 You need **${c.req_min_messages}** messages on this server to unlock this command. You have **${count}** (${c.req_min_messages - count} to go).`,
+        content: `You need **${c.req_min_messages}** messages on this server to unlock this command. You have **${count}** (${c.req_min_messages - count} to go).`,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -114,7 +114,7 @@ async function handleCustomCommand(interaction) {
     const statusText = (custom?.state || '').toLowerCase();
     if (!statusText.includes(c.req_status_text.toLowerCase())) {
       await interaction.reply({
-        content: `✏️ To unlock this command, set your Discord custom status to include: **${c.req_status_text}**`,
+        content: `To unlock this command, set your Discord custom status to include: **${c.req_status_text}**`,
         flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] },
       });
       return true;
@@ -128,7 +128,7 @@ async function handleCustomCommand(interaction) {
     if (row && now - row.last_used < c.cooldown_seconds) {
       const wait = c.cooldown_seconds - (now - row.last_used);
       await interaction.reply({
-        content: `⏳ Slow down! You can use \`/${c.name}\` again in **${wait}s**.`,
+        content: `Slow down! You can use \`/${c.name}\` again in **${wait}s**.`,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -157,7 +157,7 @@ async function handleCustomCommand(interaction) {
   try {
     if (c.delivery === 'dm') {
       await interaction.user.send(payload);
-      await interaction.reply({ content: '📬 Check your DMs!', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: 'Check your DMs!', flags: MessageFlags.Ephemeral });
     } else if (c.delivery === 'ephemeral') {
       await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
     } else {
@@ -168,8 +168,8 @@ async function handleCustomCommand(interaction) {
     // Generic error to user, details only to server logs [§5 no data leaks]
     console.error(`[bot] failed to deliver /${c.name}:`, err.message);
     const msg = c.delivery === 'dm'
-      ? '⚠️ I couldn\'t DM you — your DMs may be closed.'
-      : '⚠️ Something went wrong running that command.';
+      ? 'I couldn\'t DM you — your DMs may be closed.'
+      : 'Something went wrong running that command.';
     if (!interaction.replied) {
       await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
@@ -211,13 +211,13 @@ export function startBot() {
         const list = cmds.length
           ? cmds.map(c => `• \`/${c.name}\` — ${c.description}`).join('\n').slice(0, 3900)
           : '*No custom commands yet. Ask an admin to create some on the dashboard!*';
-        const e = new EmbedBuilder().setTitle('📋 Custom Commands').setDescription(list).setColor('#5865F2');
+        const e = new EmbedBuilder().setTitle('Custom Commands').setDescription(list).setColor('#5865F2');
         return interaction.reply({ embeds: [e], flags: MessageFlags.Ephemeral });
       }
       if (interaction.commandName === 'rank') {
         const row = q.getMsgCount.get(interaction.guildId, interaction.user.id);
         return interaction.reply({
-          content: `💬 You have sent **${row?.count ?? 0}** messages on this server (since the bot joined).`,
+          content: `You have sent **${row?.count ?? 0}** messages on this server (since the bot joined).`,
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -225,7 +225,7 @@ export function startBot() {
     } catch (err) {
       console.error('[bot] interaction error:', err);
       if (!interaction.replied && !interaction.deferred) {
-        interaction.reply({ content: '⚠️ Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        interaction.reply({ content: 'Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     }
   });

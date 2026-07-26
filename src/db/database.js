@@ -194,6 +194,20 @@ export const q = {
   listAudit: db.prepare('SELECT * FROM audit_log WHERE guild_id = ? ORDER BY id DESC LIMIT 50'),
 };
 
+// ---------- admin panel aggregate queries (read-only) ----------
+export const qAdmin = {
+  totals: db.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM commands) AS cmds,
+      (SELECT COALESCE(SUM(uses),0) FROM commands) AS uses,
+      (SELECT COALESCE(SUM(count),0) FROM message_counts) AS msgs,
+      (SELECT COUNT(*) FROM audit_log) AS audits
+  `),
+  perGuild: db.prepare('SELECT guild_id, COUNT(*) AS cmds, COALESCE(SUM(uses),0) AS uses FROM commands GROUP BY guild_id'),
+  topCommands: db.prepare('SELECT guild_id, name, uses FROM commands ORDER BY uses DESC LIMIT 10'),
+  recentAudit: db.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 30'),
+};
+
 // Audit trail helper [Security Pack §13: logging & audit trails]
 export function audit(guildId, actorId, actorTag, action, detail = '') {
   try {

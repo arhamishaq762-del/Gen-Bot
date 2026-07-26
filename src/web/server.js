@@ -17,7 +17,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { q, validateCommandInput, isSnowflake, audit } from '../db/database.js';
+import { q, qAdmin, validateCommandInput, isSnowflake, audit } from '../db/database.js';
 import { client, scheduleGuildSync } from '../bot/bot.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,9 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'https://cdn.discordapp.com', 'data:'],
+      // https: needed so the live preview can show user-supplied embed
+      // image URLs (validated server-side to be https-only)
+      imgSrc: ["'self'", 'https:', 'data:'],
       connectSrc: ["'self'"],
       frameAncestors: ["'none'"],
     },
@@ -344,6 +346,98 @@ app.get('/api/guilds/:guildId/leaderboard', requireAuth, requireGuildAdmin, (req
   res.json({ top: q.topMsgCounts.all(req.params.guildId) });
 });
 
+// ============ Custom emojis (all guilds the bot is in) ============
+// Authenticated users only. Emoji IDs/names are not sensitive (they are
+// public in any message that uses them), but we still gate the listing.
+app.get('/api/emojis', requireAuth, (req, res) => {
+  try {
+    if (DEMO) {
+      return res.json({
+        emojis: [
+          { id: '400000000000000001', name: 'pepe_ok', animated: false, guild: 'Genspark Gaming' },
+          { id: '400000000000000002', name: 'hype', animated: true, guild: 'Genspark Gaming' },
+          { id: '400000000000000003', name: 'catjam', animated: true, guild: 'Dev Lounge' },
+          { id: '400000000000000004', name: 'verified', animated: false, guild: 'Dev Lounge' },
+          { id: '400000000000000005', name: 'thonk', animated: false, guild: 'Dev Lounge' },
+        ],
+      });
+    }
+    const emojis = [];
+    for (const [, g] of client.guilds.cache) {
+      for (const [, e] of g.emojis.cache) {
+        if (!e.available) continue;
+        emojis.push({ id: e.id, name: String(e.name).slice(0, 64), animated: Boolean(e.animated), guild: g.name.slice(0, 100) });
+        if (emojis.length >= 500) break;
+      }
+      if (emojis.length >= 500) break;
+    }
+    res.json({ emojis });
+  } catch (err) {
+    console.error('[web] emojis:', err.message);
+    res.status(500).json({ error: 'Could not load emojis' });
+  }
+});
+
+// ============ Admin panel (bot owners only) ============
+// Owner IDs come from the ADMIN_USER_IDS env var (comma-separated Discord
+// user IDs). Checked server-side on every request — the panel is invisible
+// and inaccessible to everyone else. [§4 permission checks]
+const ADMIN_IDS = new Set(
+  (process.env.ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(isSnowflake)
+);
+if (DEMO) ADMIN_IDS.add('100000000000000001'); // demo user is admin in demo mode
+
+function requireBotAdmin(req, res, next) {
+  if (!req.session.user || !ADMIN_IDS.has(req.session.user.id)) {
+    // 404 (not 403) so outsiders can't even confirm the panel exists
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+}
+
+app.get('/api/admin/overview', requireAuth, requireBotAdmin, (req, res) => {
+  try {
+    const totals = qAdmin.totals.get();
+    let guilds;
+    if (DEMO) {
+      guilds = [
+        { id: '200000000000000001', name: 'Genspark Gaming', icon: null, memberCount: 128 },
+        { id: '200000000000000002', name: 'Dev Lounge', icon: null, memberCount: 54 },
+      ];
+    } else {
+      guilds = [...client.guilds.cache.values()].map(g => ({
+        id: g.id, name: g.name.slice(0, 100), icon: g.icon, memberCount: g.memberCount,
+      }));
+    }
+    const perGuild = qAdmin.perGuild.all();
+    const statMap = new Map(perGuild.map(r => [r.guild_id, r]));
+    const guildRows = guilds.map(g => ({
+      ...g,
+      commandCount: statMap.get(g.id)?.cmds ?? 0,
+      totalUses: statMap.get(g.id)?.uses ?? 0,
+    }));
+    res.json({
+      totals: {
+        guilds: guilds.length,
+        commands: totals.cmds,
+        uses: totals.uses,
+        messagesCounted: totals.msgs,
+        auditEntries: totals.audits,
+      },
+      guilds: guildRows,
+      topCommands: qAdmin.topCommands.all(),
+      recentAudit: qAdmin.recentAudit.all(),
+    });
+  } catch (err) {
+    console.error('[web] admin overview:', err.message);
+    res.status(500).json({ error: 'Could not load admin data' });
+  }
+});
+
+app.get('/api/admin/is-admin', requireAuth, (req, res) => {
+  res.json({ admin: ADMIN_IDS.has(req.session.user.id) });
+});
+
 // ============ Pages ============
 app.get('/', (req, res) => {
   if (req.session.user) return res.redirect('/dashboard');
@@ -352,6 +446,12 @@ app.get('/', (req, res) => {
 app.get(['/dashboard', '/dashboard/*splat'], (req, res) => {
   if (!req.session.user) return res.redirect('/');
   res.sendFile(path.join(__dirname, '../../public/dashboard.html'));
+});
+app.get('/admin', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  // Same 404-for-outsiders behavior as the API
+  if (!ADMIN_IDS.has(req.session.user.id)) return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(__dirname, '../../public/admin.html'));
 });
 
 // 404 + generic error handler [§5]
