@@ -462,7 +462,9 @@ app.use((err, req, res, _next) => {
 });
 
 export function startWeb() {
-  const port = Number(process.env.PORT) || 3000;
+  // PORT from .env, or SERVER_PORT (set automatically by Pterodactyl-style
+  // hosting panels like Orihost), or 3000 as a local fallback
+  const port = Number(process.env.PORT) || Number(process.env.SERVER_PORT) || 3000;
   app.listen(port, '0.0.0.0', () => {
     console.log(`[web] dashboard on http://0.0.0.0:${port} ${DEMO ? '(DEMO MODE)' : ''}`);
   });
