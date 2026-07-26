@@ -24,6 +24,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO = process.env.DEMO_MODE === 'true';
 const PROD = process.env.NODE_ENV === 'production';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+// Site is served over HTTPS only if BASE_URL says so. When it's plain http
+// (e.g. an IP:port host without SSL), we must NOT send
+// upgrade-insecure-requests / HSTS, or browsers will force https:// for all
+// assets and links and everything breaks.
+const HTTPS_SITE = BASE_URL.startsWith('https://');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -42,8 +47,12 @@ app.use(helmet({
       imgSrc: ["'self'", 'https:', 'data:'],
       connectSrc: ["'self'"],
       frameAncestors: ["'none'"],
+      // Only force-upgrade asset URLs to https when the site itself is https
+      ...(HTTPS_SITE ? {} : { upgradeInsecureRequests: null }),
     },
   },
+  // HSTS only makes sense (and is only honored) over HTTPS
+  hsts: HTTPS_SITE,
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -62,7 +71,9 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',       // CSRF defense [§6]
-    secure: PROD,          // HTTPS-only cookie in production [§9]
+    // Secure cookies only when the site is actually served over HTTPS —
+    // otherwise the browser drops the cookie and login loops forever [§9]
+    secure: PROD && HTTPS_SITE,
     maxAge: 1000 * 60 * 60 * 6, // 6h sessions
   },
 }));
