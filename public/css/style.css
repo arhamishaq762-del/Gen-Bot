@@ -405,3 +405,12 @@ code { font-family: var(--mono); font-size: .9em; background: rgba(88,101,242,.1
 .chan-chip input { position: absolute; opacity: 0; pointer-events: none; }
 .chan-chip .ic-xs { width: 12px; height: 12px; }
 .chan-empty { font-size: 13px; color: var(--muted); padding: 4px; }
+
+/* ---------- random message variations ---------- */
+.tag.t-rand { color: #f78fb3; border-color: rgba(247,143,179,.4); }
+#randomList { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.rand-row { display: flex; gap: 8px; align-items: flex-start; }
+.rand-wrap { flex: 1; }
+.rand-input { width: 100%; resize: vertical; }
+.rand-del { flex: 0 0 auto; margin-top: 2px; padding: 6px 9px; }
+#addRandomBtn { margin-bottom: 4px; }

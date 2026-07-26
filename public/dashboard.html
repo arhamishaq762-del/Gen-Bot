@@ -94,6 +94,13 @@
         <small>Placeholders: <code>{user}</code> mention · <code>{username}</code> · <code>{server}</code></small>
       </label>
 
+      <div class="field" id="rowRandom">
+        <span class="field-label"><svg class="ic ic-xs"><use href="/icons.svg#i-shuffle"/></svg> Random variations <small>(optional)</small></span>
+        <div id="randomList"></div>
+        <button type="button" class="btn btn-sm" id="addRandomBtn"><svg class="ic ic-xs"><use href="/icons.svg#i-plus"/></svg> Add variation</button>
+        <small>Add more messages and the bot will pick ONE at random each time the command is used. Placeholders and custom emojis work here too.</small>
+      </div>
+
       <div id="rowEmbed" class="hidden">
         <div class="form-grid">
           <label class="field"><span>Embed title</span><input type="text" id="fETitle" maxlength="256" placeholder="Announcement"></label>

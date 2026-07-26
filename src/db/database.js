@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS commands (
   -- response
   response_type TEXT NOT NULL DEFAULT 'text' CHECK (response_type IN ('text','embed')),
   response_text TEXT NOT NULL DEFAULT '',
+  -- extra random variations (JSON array of strings; empty = always send response_text)
+  random_texts TEXT NOT NULL DEFAULT '[]',
   embed_title TEXT DEFAULT '',
   embed_description TEXT DEFAULT '',
   embed_color TEXT DEFAULT '#5865F2',
@@ -87,6 +89,10 @@ CREATE INDEX IF NOT EXISTS idx_cmd_guild ON commands (guild_id);
     db.exec("ALTER TABLE commands ADD COLUMN allowed_channel_ids TEXT NOT NULL DEFAULT ''");
     console.log('[db] migrated: added commands.allowed_channel_ids');
   }
+  if (!cols.includes('random_texts')) {
+    db.exec("ALTER TABLE commands ADD COLUMN random_texts TEXT NOT NULL DEFAULT '[]'");
+    console.log('[db] migrated: added commands.random_texts');
+  }
 }
 
 // ---------- validation helpers [Security Pack §1: backend validation] ----------
@@ -117,6 +123,20 @@ export function validateCommandInput(body, { partial = false } = {}) {
   out.response_type = rt === 'embed' ? 'embed' : 'text';
 
   out.response_text = str(body.response_text).slice(0, 2000);
+
+  // Random message variations: array of strings (the main response_text is
+  // variation #1, these are extras). Max 19 extras = 20 total messages.
+  {
+    let raw = body.random_texts;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = null; } }
+    if (raw == null) raw = [];
+    if (!Array.isArray(raw)) errors.push('Random variations must be a list of messages');
+    else {
+      const list = raw.map(v => str(v).trim().slice(0, 2000)).filter(Boolean);
+      if (list.length > 19) errors.push('Maximum 20 random messages per command (1 main + 19 variations)');
+      else out.random_texts = JSON.stringify(list);
+    }
+  }
   out.embed_title = str(body.embed_title).slice(0, 256);
   out.embed_description = str(body.embed_description).slice(0, 4000);
   out.embed_footer = str(body.embed_footer).slice(0, 2048);
@@ -160,7 +180,7 @@ export function validateCommandInput(body, { partial = false } = {}) {
 
   out.enabled = body.enabled === false || body.enabled === 0 ? 0 : 1;
 
-  if (out.response_type === 'text' && !out.response_text.trim()) {
+  if (out.response_type === 'text' && !out.response_text.trim() && out.random_texts === '[]') {
     errors.push('Response text is required for text commands');
   }
   if (out.response_type === 'embed' && !out.embed_title.trim() && !out.embed_description.trim()) {
@@ -181,16 +201,16 @@ export const q = {
   getCommand: db.prepare('SELECT * FROM commands WHERE id = ? AND guild_id = ?'),
   getCommandByName: db.prepare('SELECT * FROM commands WHERE guild_id = ? AND name = ? AND enabled = 1'),
   insertCommand: db.prepare(`
-    INSERT INTO commands (guild_id, name, description, response_type, response_text,
+    INSERT INTO commands (guild_id, name, description, response_type, response_text, random_texts,
       embed_title, embed_description, embed_color, embed_image, embed_footer,
       delivery, required_role_id, allowed_channel_ids, req_min_messages, req_status_text, cooldown_seconds, enabled, created_by)
-    VALUES (@guild_id, @name, @description, @response_type, @response_text,
+    VALUES (@guild_id, @name, @description, @response_type, @response_text, @random_texts,
       @embed_title, @embed_description, @embed_color, @embed_image, @embed_footer,
       @delivery, @required_role_id, @allowed_channel_ids, @req_min_messages, @req_status_text, @cooldown_seconds, @enabled, @created_by)
   `),
   updateCommand: db.prepare(`
     UPDATE commands SET name=@name, description=@description, response_type=@response_type,
-      response_text=@response_text, embed_title=@embed_title, embed_description=@embed_description,
+      response_text=@response_text, random_texts=@random_texts, embed_title=@embed_title, embed_description=@embed_description,
       embed_color=@embed_color, embed_image=@embed_image, embed_footer=@embed_footer,
       delivery=@delivery, required_role_id=@required_role_id, allowed_channel_ids=@allowed_channel_ids, req_min_messages=@req_min_messages,
       req_status_text=@req_status_text, cooldown_seconds=@cooldown_seconds, enabled=@enabled,

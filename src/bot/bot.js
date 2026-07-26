@@ -150,6 +150,18 @@ async function handleCustomCommand(interaction) {
     q.setCooldown.run(c.id, interaction.user.id, now);
   }
 
+  // --- Random message pick ---
+  // response_text is variation #1; random_texts holds the extras. Each use
+  // picks one uniformly at random, so one /cmd can send many different msgs.
+  let chosenText = c.response_text;
+  try {
+    const extras = JSON.parse(c.random_texts || '[]');
+    if (Array.isArray(extras) && extras.length) {
+      const pool = c.response_text?.trim() ? [c.response_text, ...extras] : extras;
+      chosenText = pool[Math.floor(Math.random() * pool.length)];
+    }
+  } catch { /* malformed JSON — fall back to response_text */ }
+
   // --- Build response ---
   // allowedMentions blocks @everyone / role pings even if an admin put them
   // in the response text — prevents mention-abuse via the dashboard.
@@ -161,9 +173,9 @@ async function handleCustomCommand(interaction) {
       embed_title: fillPlaceholders(c.embed_title, interaction),
       embed_description: fillPlaceholders(c.embed_description, interaction),
     })];
-    if (c.response_text) payload.content = fillPlaceholders(c.response_text, interaction).slice(0, 2000);
+    if (chosenText) payload.content = fillPlaceholders(chosenText, interaction).slice(0, 2000);
   } else {
-    payload.content = fillPlaceholders(c.response_text, interaction).slice(0, 2000);
+    payload.content = fillPlaceholders(chosenText, interaction).slice(0, 2000);
   }
   payload.allowedMentions = safeMentions;
 

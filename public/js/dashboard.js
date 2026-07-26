@@ -192,6 +192,11 @@
 
       const tags = el('div', 'cmd-tags');
       tags.appendChild(iconText(c.response_type === 'embed' ? 'i-image' : 'i-chat', c.response_type, 'tag'));
+      const nRandom = parseRandom(c.random_texts).length;
+      if (nRandom > 0) {
+        const total = nRandom + (c.response_text && c.response_text.trim() ? 1 : 0);
+        tags.appendChild(iconText('i-shuffle', `${total} random`, 'tag t-rand'));
+      }
       const dInfo = { channel: ['i-broadcast', 'public'], ephemeral: ['i-eye', 'hidden'], dm: ['i-mail', 'DM'] }[c.delivery];
       tags.appendChild(iconText(dInfo[0], dInfo[1], 'tag t-dm'));
       if (c.required_role_id) {
@@ -327,6 +332,9 @@
     // populate channel picker (checkbox chips)
     renderChanPicker((cmd?.allowed_channel_ids || '').split(',').filter(Boolean));
 
+    // populate random variation rows
+    renderRandomList(parseRandom(cmd?.random_texts));
+
     $('fName').value = cmd?.name || '';
     $('fDesc').value = cmd?.description || '';
     segType.set(cmd?.response_type || 'text');
@@ -348,6 +356,48 @@
     $('modalBackdrop').classList.remove('hidden');
     $('fName').focus();
   }
+
+  // ---------- random message variations ----------
+  function parseRandom(v) {
+    if (Array.isArray(v)) return v;
+    try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+  }
+
+  function addRandomRow(value = '') {
+    const box = $('randomList');
+    if (box.children.length >= 19) { toast('Maximum 20 messages per command (1 main + 19 variations)', 'err'); return null; }
+    const row = el('div', 'rand-row');
+    const wrap = el('div', 'input-wrap rand-wrap');
+    const ta = el('textarea', 'rand-input');
+    ta.rows = 2; ta.maxLength = 2000;
+    ta.placeholder = `Variation #${box.children.length + 2}…`;
+    ta.value = value;
+    ta.addEventListener('input', updatePreview);
+    const emojiBtn = el('button', 'emoji-btn');
+    emojiBtn.type = 'button'; emojiBtn.title = 'Insert custom emoji';
+    emojiBtn.appendChild(svgIcon('i-smile'));
+    emojiBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openEmojiPop(emojiBtn, ta); });
+    wrap.appendChild(ta); wrap.appendChild(emojiBtn);
+    const del = el('button', 'btn btn-sm btn-danger rand-del');
+    del.type = 'button'; del.title = 'Remove this variation';
+    del.appendChild(svgIcon('i-x', 'ic ic-xs'));
+    del.addEventListener('click', () => { row.remove(); updatePreview(); });
+    row.appendChild(wrap); row.appendChild(del);
+    box.appendChild(row);
+    return ta;
+  }
+
+  function renderRandomList(values) {
+    $('randomList').textContent = '';
+    for (const v of values) addRandomRow(v);
+  }
+
+  function getRandomTexts() {
+    return [...document.querySelectorAll('#randomList .rand-input')]
+      .map(ta => ta.value.trim()).filter(Boolean);
+  }
+
+  $('addRandomBtn').addEventListener('click', () => { const ta = addRandomRow(); if (ta) ta.focus(); });
 
   // ---------- channel restriction picker ----------
   function renderChanPicker(selectedIds = []) {
@@ -454,6 +504,11 @@
     if ($('fStatus').value.trim()) flags.appendChild(iconText('i-edit', 'Requires status text', 'pv-flag'));
     const cd = parseInt($('fCooldown').value, 10) || 0;
     if (cd > 0) flags.appendChild(iconText('i-clock', `${fmtCd(cd)} cooldown`, 'pv-flag'));
+    const rands = getRandomTexts();
+    if (rands.length) {
+      const total = rands.length + ($('fText').value.trim() ? 1 : 0);
+      flags.appendChild(iconText('i-shuffle', `Sends 1 of ${total} random messages`, 'pv-flag'));
+    }
   }
 
   // live update on every input in the form
@@ -509,21 +564,26 @@
     updatePreview();
   }
 
-  document.querySelectorAll('.emoji-btn').forEach(btn => {
+  // Opens the emoji popover next to `btn`, inserting into `target` textarea.
+  // Used by both the static buttons and the dynamic random-variation rows.
+  function openEmojiPop(btn, target) {
+    const pop = $('emojiPop');
+    if (!pop.classList.contains('hidden') && state.emojiTarget === target) { hideEmojiPop(); return; }
+    state.emojiTarget = target;
+    $('emojiSearch').value = '';
+    renderEmojiGrid();
+    pop.classList.remove('hidden');
+    const r = btn.getBoundingClientRect();
+    const popW = 320;
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - popW - 8, r.right - popW)) + 'px';
+    pop.style.top = (r.bottom + 6) + 'px';
+    $('emojiSearch').focus();
+  }
+
+  document.querySelectorAll('.emoji-btn[data-target]').forEach(btn => {
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      const pop = $('emojiPop');
-      const target = $(btn.dataset.target);
-      if (!pop.classList.contains('hidden') && state.emojiTarget === target) { hideEmojiPop(); return; }
-      state.emojiTarget = target;
-      $('emojiSearch').value = '';
-      renderEmojiGrid();
-      pop.classList.remove('hidden');
-      const r = btn.getBoundingClientRect();
-      const popW = 320;
-      pop.style.left = Math.max(8, Math.min(window.innerWidth - popW - 8, r.right - popW)) + 'px';
-      pop.style.top = (r.bottom + 6) + 'px';
-      $('emojiSearch').focus();
+      openEmojiPop(btn, $(btn.dataset.target));
     });
   });
   $('emojiSearch').addEventListener('input', (e) => renderEmojiGrid(e.target.value));
@@ -538,6 +598,7 @@
       description: $('fDesc').value.trim(),
       response_type: segType.get(),
       response_text: $('fText').value,
+      random_texts: getRandomTexts(),
       embed_title: $('fETitle').value,
       embed_description: $('fEDesc').value,
       embed_color: $('fEColor').value,
